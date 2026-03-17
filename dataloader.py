@@ -41,17 +41,8 @@ def get_dataloaders(data_root: str, batch_size: int = 32, num_workers: int = 2):
         train_loader, val_loader, test_loader, class_to_idx
     """
 
-    # Training transforms — includes augmentation to help the model generalize
-    train_transform = T.Compose([
-        T.RandomResizedCrop(224, scale=(0.8, 1.0)),
-        T.RandomHorizontalFlip(),
-        T.ColorJitter(brightness=0.2, contrast=0.2),
-        T.ToTensor(),
-        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
-
-    # Val/test transforms — no augmentation, just resize and normalize
-    eval_transform = T.Compose([
+    # No extra augmentation — dataset is already pre-augmented
+    transform = T.Compose([
         T.Resize(256),
         T.CenterCrop(224),
         T.ToTensor(),
@@ -59,9 +50,9 @@ def get_dataloaders(data_root: str, batch_size: int = 32, num_workers: int = 2):
     ])
 
     # Load datasets from processed_data folder structure
-    train_dataset = ImageFolder(root=f"{data_root}/train", transform=train_transform)
-    val_dataset   = ImageFolder(root=f"{data_root}/val",   transform=eval_transform)
-    test_dataset  = ImageFolder(root=f"{data_root}/test",  transform=eval_transform)
+    train_dataset = ImageFolder(root=f"{data_root}/train", transform=transform)
+    val_dataset   = ImageFolder(root=f"{data_root}/val",   transform=transform)
+    test_dataset  = ImageFolder(root=f"{data_root}/test",  transform=transform)
 
     # Wrap in DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
