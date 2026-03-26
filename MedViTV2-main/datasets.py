@@ -343,6 +343,41 @@ class KvasirDatasetDownloader:
             self.extract_dataset()
             return self.dataset_dir
 
+class DementiaDatasetDownloader:
+    def __init__(self, root_dir='data', dataset_url='https://datasets.simula.no/downloads/kvasir/kvasir-dataset.zip'):
+        self.root_dir = root_dir
+        self.dataset_url = dataset_url
+        self.dataset_zip_path = os.path.join(self.root_dir, 'kvasir-dataset.zip')
+        self.dataset_dir = os.path.join(self.root_dir, 'kvasir-dataset')
+        
+    def download_dataset(self):
+        if not os.path.exists(self.root_dir):
+            os.makedirs(self.root_dir)
+            
+        if not os.path.exists(self.dataset_zip_path):
+            print(f"Downloading dataset from {self.dataset_url}...")
+            with requests.get(self.dataset_url, stream=True) as r:
+                r.raise_for_status()
+                with open(self.dataset_zip_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            print("Download complete.")
+        
+    def extract_dataset(self):
+        if not os.path.exists(self.dataset_dir):
+            print("Extracting dataset...")
+            with ZipFile(self.dataset_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(self.root_dir)
+            print("Extraction complete.")
+        
+    def get_dataset(self):
+        if os.path.exists(self.dataset_dir):
+            print("Dataset already exists. Returning the root directory.")
+            return self.dataset_dir
+        else:
+            self.download_dataset()
+            self.extract_dataset()
+            return self.dataset_dir
 
 
         
