@@ -455,7 +455,7 @@ class AlzheimerKFoldManager:
     def __init__(self, root_dir='/content/drive/MyDrive/SP26_dementia_data', n_splits=5, seed=42):
         self.root_dir = root_dir
         self.dataset_id = 'aryansinghal10/alzheimers-multiclass-dataset-equal-and-augmented'
-        self.data_path = os.path.join(self.root_dir, 'kfoldable')
+        self.data_path = os.path.join(self.root_dir, 'kfoldable/Alzheimer-Dataset/combined_images')
         self.n_splits = n_splits
         self.seed = seed
         
