@@ -21,12 +21,18 @@ import shutil
 seed = 42
 torch.manual_seed(seed)
 
-
-import os
-import requests
 from zipfile import ZipFile
 import pandas as pd
 import shutil
+
+from torchvision import datasets
+from sklearn.model_selection import StratifiedKFold
+
+try:
+    from google.colab import userdata
+    import kaggle
+except ImportError:
+    pass
 
 root_dir='data'
 if not os.path.exists(root_dir):
@@ -444,3 +450,50 @@ def build_transform(args):
     t_test.append(transforms.ToTensor())
     t_test.append(transforms.Normalize(mean=[.5], std=[.5]))
     return transforms.Compose(t_train), transforms.Compose(t_test)
+
+class AlzheimerKFoldManager:
+    def __init__(self, root_dir='/content/drive/MyDrive/SP26_dementia_data', n_splits=5, seed=42):
+        self.root_dir = root_dir
+        self.dataset_id = 'aryansinghal10/alzheimers-multiclass-dataset-equal-and-augmented'
+        self.data_path = os.path.join(self.root_dir, 'kfoldable')
+        self.n_splits = n_splits
+        self.seed = seed
+        
+        self.skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.seed)
+
+    def _setup_kaggle(self):
+        #Authenticates Kaggle
+        os.environ['KAGGLE_USERNAME'] = userdata.get('KAGGLE_USERNAME')
+        os.environ['KAGGLE_KEY'] = userdata.get('KAGGLE_KEY')
+
+    def download_and_prepare(self):
+        # Check if folder exists first
+        if os.path.exists(self.data_path):
+            print(f"Found existing data at {self.data_path}. Skipping download.")
+            return self.data_path
+        
+        # if not, create the path and download
+        print("Data not found in Drive. Preparing to download...")
+        os.makedirs(self.root_dir, exist_ok=True)
+        
+        self._setup_kaggle()
+        kaggle.api.dataset_download_files(self.dataset_id, path=self.root_dir, unzip=False)
+    
+        zip_path = os.path.join(self.root_dir, 'alzheimers-multiclass-dataset-equal-and-augmented.zip')
+        with ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(self.data_path)
+        
+        os.remove(zip_path)
+        return self.data_path
+
+    def get_folds(self, transform=None):
+        full_dataset = datasets.ImageFolder(root=self.data_path, transform=transform)
+        
+        labels = full_dataset.targets
+        indices = list(range(len(full_dataset)))
+        
+        folds = []
+        for train_idx, val_idx in self.skf.split(indices, labels):
+            folds.append((Subset(full_dataset, train_idx), Subset(full_dataset, val_idx)))
+            
+        return folds
