@@ -344,40 +344,70 @@ class KvasirDatasetDownloader:
             return self.dataset_dir
 
 class DementiaDatasetDownloader:
-    def __init__(self, root_dir='data', dataset_url='https://datasets.simula.no/downloads/kvasir/kvasir-dataset.zip'):
+    def __init__(self, root_dir='data', drive_dir=None):
         self.root_dir = root_dir
-        self.dataset_url = dataset_url
-        self.dataset_zip_path = os.path.join(self.root_dir, 'kvasir-dataset.zip')
-        self.dataset_dir = os.path.join(self.root_dir, 'kvasir-dataset')
-        
+        self.drive_dir = drive_dir or os.environ.get('DEMENTIA_DATASET_DIR')
+        self.organized_images_dir = os.path.join(self.root_dir, 'Dementia-Dataset')
+        self.local_train_dir = os.path.join(self.organized_images_dir, 'train')
+        self.local_val_dir = os.path.join(self.organized_images_dir, 'val')
+
+    def _resolve_drive_split_dirs(self):
+        if self.drive_dir is None:
+            raise ValueError(
+                "Dementia dataset path not set. Provide drive_dir=... pointing to a folder containing "
+                "'train/' and 'val/' (or set env var DEMENTIA_DATASET_DIR)."
+            )
+
+        drive_dir = os.path.expanduser(self.drive_dir)
+
+        base = drive_dir
+
+        drive_train_dir = os.path.join(base, 'train')
+        drive_val_dir = os.path.join(base, 'val')
+
+        if not os.path.isdir(drive_train_dir):
+            raise FileNotFoundError(f"Expected train directory at: {drive_train_dir}")
+        if not os.path.isdir(drive_val_dir):
+            raise FileNotFoundError(f"Expected val directory at: {drive_val_dir}")
+
+        return drive_train_dir, drive_val_dir
+
     def download_dataset(self):
+        drive_train_dir, drive_val_dir = self._resolve_drive_split_dirs()
+        
         if not os.path.exists(self.root_dir):
             os.makedirs(self.root_dir)
-            
-        if not os.path.exists(self.dataset_zip_path):
-            print(f"Downloading dataset from {self.dataset_url}...")
-            with requests.get(self.dataset_url, stream=True) as r:
-                r.raise_for_status()
-                with open(self.dataset_zip_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-            print("Download complete.")
-        
-    def extract_dataset(self):
-        if not os.path.exists(self.dataset_dir):
-            print("Extracting dataset...")
-            with ZipFile(self.dataset_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(self.root_dir)
-            print("Extraction complete.")
-        
-    def get_dataset(self):
-        if os.path.exists(self.dataset_dir):
-            print("Dataset already exists. Returning the root directory.")
-            return self.dataset_dir
+
+        os.makedirs(self.organized_images_dir, exist_ok=True)
+
+        # Copy per-split so we can safely resume partial copies.
+        if not os.path.exists(self.local_train_dir):
+            print(f"Copying Dementia train split: {drive_train_dir} -> {self.local_train_dir}")
+            shutil.copytree(drive_train_dir, self.local_train_dir)
+            print("Train copy complete.")
         else:
-            self.download_dataset()
-            self.extract_dataset()
-            return self.dataset_dir
+            print("Train split already exists locally. Skipping train copy.")
+
+        if not os.path.exists(self.local_val_dir):
+            print(f"Copying Dementia val split: {drive_val_dir} -> {self.local_val_dir}")
+            shutil.copytree(drive_val_dir, self.local_val_dir)
+            print("Val copy complete.")
+        else:
+            print("Val split already exists locally. Skipping val copy.")
+
+    def extract_dataset(self):
+        # Data is pre-organized on Drive, no extraction needed.
+        # Included for API consistency with other downloaders.
+        pass
+
+    def get_dataset(self):
+        if os.path.isdir(self.local_train_dir) and os.path.isdir(self.local_val_dir):
+            print("Dataset already exists. Returning train/val directories.")
+            return self.local_train_dir, self.local_val_dir
+
+        self.download_dataset()
+        self.extract_dataset()
+        return self.local_train_dir, self.local_val_dir
 
 
         
@@ -441,6 +471,15 @@ def build_dataset(args):
         print("Number of classes: ", nb_classes)
         train_dataset = DataClass(split='train', transform=train_transform, download=True, as_rgb=True, root='./data', size=224, mmap_mode='r')
         test_dataset = DataClass(split='test', transform=test_transform, download=True, as_rgb=True, root='./data', size=224, mmap_mode='r')
+        return train_dataset, test_dataset, nb_classes
+    elif args.dataset == 'Dementia':
+        nb_classes = 4
+        drive_dir = getattr(args, 'dataset_dir', None)
+        downloader = DementiaDatasetDownloader(drive_dir=drive_dir)
+        train_dir, val_dir = downloader.get_dataset()
+        print(f"Dementia dataset is available at: train={train_dir} val={val_dir}")
+        train_dataset = datasets.ImageFolder(root=train_dir, transform=train_transform)
+        test_dataset = datasets.ImageFolder(root=val_dir, transform=test_transform)
         return train_dataset, test_dataset, nb_classes
     else:
         raise NotImplementedError()
