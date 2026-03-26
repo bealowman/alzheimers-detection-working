@@ -451,10 +451,12 @@ def build_transform(args):
     t_test.append(transforms.Normalize(mean=[.5], std=[.5]))
     return transforms.Compose(t_train), transforms.Compose(t_test)
 
+
 class AlzheimerKFoldManager:
     def __init__(self, root_dir='/content/drive/MyDrive/SP26_dementia_data', n_splits=5, seed=42):
         self.root_dir = root_dir
         self.dataset_id = 'aryansinghal10/alzheimers-multiclass-dataset-equal-and-augmented'
+        # may need to change based on file structure
         self.data_path = os.path.join(self.root_dir, 'kfoldable/Alzheimer-Dataset/combined_images')
         self.n_splits = n_splits
         self.seed = seed
@@ -467,12 +469,14 @@ class AlzheimerKFoldManager:
         os.environ['KAGGLE_KEY'] = userdata.get('KAGGLE_KEY')
 
     def download_and_prepare(self):
-        # Check if folder exists first
+        #check if folder exists first
+        # I downloaded the data directly from kaggle 
+        # into gDrive so it's already there
         if os.path.exists(self.data_path):
             print(f"Found existing data at {self.data_path}. Skipping download.")
             return self.data_path
         
-        # if not, create the path and download
+        #if not, create the path and download
         print("Data not found in Drive. Preparing to download...")
         os.makedirs(self.root_dir, exist_ok=True)
         
@@ -497,3 +501,29 @@ class AlzheimerKFoldManager:
             folds.append((Subset(full_dataset, train_idx), Subset(full_dataset, val_idx)))
             
         return folds
+
+    def get_fold_loaders(self, fold_index, transform=None, batch_size=32, num_workers=2):
+   
+        folds = self.get_folds(transform=transform)
+        
+        #pick specific fold requested
+        train_subset, val_subset = folds[fold_index]
+        
+        #DataLoaders
+        train_loader = DataLoader(
+            train_subset, 
+            batch_size=batch_size, 
+            shuffle=True, 
+            num_workers=num_workers,
+            pin_memory=True 
+        )
+        
+        val_loader = DataLoader(
+            val_subset, 
+            batch_size=batch_size, 
+            shuffle=False, 
+            num_workers=num_workers,
+            pin_memory=True
+        )
+        
+        return train_loader, val_loader
