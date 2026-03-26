@@ -52,9 +52,8 @@ def download_checkpoint(url, path):
     print(f"Checkpoint downloaded and saved to {path}")
 
 # Define the MNIST training routine
-def train_mnist(epochs, net, train_loader, test_loader, optimizer, scheduler, loss_function, device, save_path, data_flag, task):
-    best_acc = 0.0
-    for epoch in range(epochs):
+def train_mnist(epochs, net, train_loader, test_loader, optimizer, scheduler, loss_function, device, save_path, data_flag, task, start_epoch=0, best_acc=0.0):
+    for epoch in range(start_epoch, epochs):
         net.train()
         running_loss = 0.0
         train_bar = tqdm(train_loader, file=sys.stdout)
@@ -133,10 +132,8 @@ def overall_accuracy(conf_matrix):
     total_sum = conf_matrix.sum()  # Sum of all elements in the matrix
     return tp_tn_sum / total_sum
 
-def train_other(epochs, net, train_loader, test_loader, optimizer, scheduler, loss_function, device, save_path):
-    best_acc = 0.0
-    
-    for epoch in range(epochs):
+def train_other(epochs, net, train_loader, test_loader, optimizer, scheduler, loss_function, device, save_path, start_epoch=0, best_acc=0.0):
+    for epoch in range(start_epoch, epochs):
         net.train()
         running_loss = 0.0
         train_bar = tqdm(train_loader, file=sys.stdout)
@@ -290,17 +287,44 @@ def main(args):
     print(test_dataset)
 
     epochs = args.epochs
-    best_acc = 0.0
-    save_path = f'./{model_name}_{dataset_name}.pth'
+    os.makedirs(args.save_dir, exist_ok=True)
+    save_path = os.path.join(args.save_dir, f'{model_name}_{dataset_name}.pth')
     train_steps = len(train_loader)
+    start_epoch = 0
+    best_acc = 0.0
+
+    resume_path = args.resume_path.strip()
+    if resume_path and not os.path.isabs(resume_path):
+        candidate_resume_path = os.path.join(args.save_dir, resume_path)
+        if os.path.exists(candidate_resume_path):
+            resume_path = candidate_resume_path
+
+    if resume_path:
+        if not os.path.exists(resume_path):
+            raise FileNotFoundError(f"Resume checkpoint not found at: {resume_path}")
+        resume_checkpoint = torch.load(resume_path, map_location=device)
+        required_keys = {'model', 'optimizer', 'lr_scheduler', 'epoch'}
+        if not required_keys.issubset(resume_checkpoint.keys()):
+            raise ValueError(
+                "Resume checkpoint is missing required keys. "
+                f"Expected at least: {sorted(required_keys)}"
+            )
+
+        net.load_state_dict(resume_checkpoint['model'])
+        optimizer.load_state_dict(resume_checkpoint['optimizer'])
+        scheduler.load_state_dict(resume_checkpoint['lr_scheduler'])
+        start_epoch = int(resume_checkpoint['epoch']) + 1
+        best_acc = float(resume_checkpoint.get('acc', 0.0))
+        print(f"Resumed training from {resume_path}")
+        print(f"Starting at epoch {start_epoch + 1}/{epochs} with best_acc={best_acc:.4f}")
 
     if dataset_name.endswith('mnist'):
         
         train_mnist(epochs, net, train_loader, test_loader,
-        optimizer, scheduler, loss_function, device, save_path, dataset_name, task)
+        optimizer, scheduler, loss_function, device, save_path, dataset_name, task, start_epoch, best_acc)
     else:
         train_other(epochs, net, train_loader, test_loader,
-        optimizer, scheduler, loss_function, device, save_path)
+        optimizer, scheduler, loss_function, device, save_path, start_epoch, best_acc)
 
 
 if __name__ == '__main__':
@@ -314,6 +338,8 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs.')
     parser.add_argument('--pretrained', type=lambda x: bool(strtobool(x)), default=False, help="Whether to use pretrained weights (True/False).")
     parser.add_argument('--checkpoint_path', type=str, default='./checkpoint/MedViT_tiny.pth', help='Path to the checkpoint file.')
+    parser.add_argument('--save_dir', type=str, default='./checkpoint', help='Directory to save training checkpoints.')
+    parser.add_argument('--resume_path', type=str, default='', help='Path to a saved training checkpoint to resume from.')
 
     args = parser.parse_args()
     main(args)
