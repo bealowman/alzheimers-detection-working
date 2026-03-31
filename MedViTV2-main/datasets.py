@@ -527,3 +527,180 @@ class AlzheimerKFoldManager:
         )
         
         return train_loader, val_loader
+    
+
+#MOSTLY BEA'S CODE EXCEPT I WANT TO OVERRIDE TO GOOGLE DRIVE
+
+class DementiaDatasetDownloader:
+    def __init__(self, root_dir='data', drive_dir=None):
+        self.root_dir = root_dir
+        self.drive_dir = drive_dir or os.environ.get('DEMENTIA_DATASET_DIR')
+        self.organized_images_dir = os.path.join(self.root_dir, 'Dementia-Dataset')
+        self.local_train_dir = os.path.join(self.organized_images_dir, 'train')
+        self.local_val_dir = os.path.join(self.organized_images_dir, 'val')
+
+    def _resolve_drive_split_dirs(self):
+        if self.drive_dir is None:
+            raise ValueError(
+                "Dementia dataset path not set. Provide drive_dir=... pointing to a folder containing "
+                "'train/' and 'val/' (or set env var DEMENTIA_DATASET_DIR)."
+            )
+
+        drive_dir = os.path.expanduser(self.drive_dir)
+
+        base = drive_dir
+
+        drive_train_dir = os.path.join(base, 'train')
+        drive_val_dir = os.path.join(base, 'val')
+
+        if not os.path.isdir(drive_train_dir):
+            raise FileNotFoundError(f"Expected train directory at: {drive_train_dir}")
+        if not os.path.isdir(drive_val_dir):
+            raise FileNotFoundError(f"Expected val directory at: {drive_val_dir}")
+
+        return drive_train_dir, drive_val_dir
+
+    def download_dataset(self):
+        drive_train_dir, drive_val_dir = self._resolve_drive_split_dirs()
+        
+        if not os.path.exists(self.root_dir):
+            os.makedirs(self.root_dir)
+
+        os.makedirs(self.organized_images_dir, exist_ok=True)
+
+        # Copy per-split so we can safely resume partial copies.
+        if not os.path.exists(self.local_train_dir):
+            print(f"Copying Dementia train split: {drive_train_dir} -> {self.local_train_dir}")
+            shutil.copytree(drive_train_dir, self.local_train_dir)
+            print("Train copy complete.")
+        else:
+            print("Train split already exists locally. Skipping train copy.")
+
+        if not os.path.exists(self.local_val_dir):
+            print(f"Copying Dementia val split: {drive_val_dir} -> {self.local_val_dir}")
+            shutil.copytree(drive_val_dir, self.local_val_dir)
+            print("Val copy complete.")
+        else:
+            print("Val split already exists locally. Skipping val copy.")
+
+    def extract_dataset(self):
+        # Data is pre-organized on Drive, no extraction needed.
+        # Included for API consistency with other downloaders.
+        pass
+
+    def get_dataset(self):
+        drive_train_dir, drive_val_dir = self._resolve_drive_split_dirs()
+        
+        print(f"Bypassing copy. Training directly from Drive: {drive_train_dir}")
+        
+        return drive_train_dir, drive_val_dir
+
+
+        
+        
+def build_dataset(args):
+    train_transform, test_transform = build_transform(args)
+    #data_dir = args.dataset_dir
+    
+    
+    if args.dataset == 'Kvasir':
+        # Define the sizes for the splits
+        train_size = 2408
+        val_size = 392
+        test_size = 1200
+        nb_classes = 8
+        downloader = KvasirDatasetDownloader()
+        data_dir = downloader.get_dataset()
+        print(f"Dataset is available at: {data_dir}")  
+    elif args.dataset == 'CPN':
+        # Define the sizes for the splits
+        train_size = 3140
+        val_size = 521
+        test_size = 1567
+        nb_classes = 3
+        downloader = CPNDatasetDownloader()
+        data_dir = downloader.get_dataset()
+        print(f"Dataset is available at: {data_dir}")
+    elif args.dataset == 'Fetal':
+        # Define the sizes for the splits
+        train_size = 7446
+        val_size = 1237
+        test_size = 3717
+        nb_classes = 6
+        downloader = FetalDatasetDownloader()
+        data_dir = downloader.get_dataset()
+        print(f"Dataset is available at: {data_dir}")
+    elif args.dataset == 'PAD':
+        # Define the sizes of each split
+        train_size = 1384
+        val_size = 227
+        test_size = 687
+        nb_classes = 6
+        downloader = PADatasetDownloader()
+        data_dir = downloader.get_dataset()
+        print(f"Dataset is available at: {data_dir}")
+    elif args.dataset == 'ISIC2018':
+        nb_classes = 7
+        manager = ISICDatasetManager()
+        train_path, test_path = manager.setup_dataset()
+        print(f"Dataset is available at: {train_path}")
+        train_dataset = datasets.ImageFolder(root=train_path, transform=train_transform) 
+        test_dataset = datasets.ImageFolder(root=test_path, transform=test_transform) 
+        return train_dataset, test_dataset, nb_classes
+    elif args.dataset.endswith('mnist'):
+        info = INFO[args.dataset]
+        task = info['task']
+        n_channels = info['n_channels']
+        nb_classes = len(info['label'])
+        DataClass = getattr(medmnist, info['python_class'])
+        print("Number of channels: ", n_channels)
+        print("Number of classes: ", nb_classes)
+        train_dataset = DataClass(split='train', transform=train_transform, download=True, as_rgb=True, root='./data', size=224, mmap_mode='r')
+        test_dataset = DataClass(split='test', transform=test_transform, download=True, as_rgb=True, root='./data', size=224, mmap_mode='r')
+        return train_dataset, test_dataset, nb_classes
+    elif args.dataset == 'Dementia':
+        nb_classes = 4
+        drive_dir = getattr(args, 'dataset_dir', None)
+        downloader = DementiaDatasetDownloader(drive_dir=drive_dir)
+        train_dir, val_dir = downloader.get_dataset()
+        print(f"Dementia dataset is available at: train={train_dir} val={val_dir}")
+        train_dataset = datasets.ImageFolder(root=train_dir, transform=train_transform)
+        test_dataset = datasets.ImageFolder(root=val_dir, transform=test_transform)
+        return train_dataset, test_dataset, nb_classes
+    else:
+        raise NotImplementedError()
+    
+    full_dataset = datasets.ImageFolder(root=data_dir)  # Load without transform
+    # Verify the total number of images matches the sum of the splits
+    assert train_size + val_size + test_size == len(full_dataset), "The sum of the splits must equal the total number of images"
+
+    # Split the dataset
+    train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size])
+
+    # Apply the transformations
+    train_dataset = Subset(datasets.ImageFolder(root=data_dir, transform=train_transform), train_dataset.indices)
+    val_dataset = Subset(datasets.ImageFolder(root=data_dir, transform=test_transform), val_dataset.indices)
+    test_dataset = Subset(datasets.ImageFolder(root=data_dir, transform=test_transform), test_dataset.indices)
+
+    print("Number of the class = %d" % nb_classes)
+
+    return train_dataset, test_dataset, nb_classes
+
+
+def build_transform(args):
+    t_train = []
+    # this should always dispatch to transforms_imagenet_train
+    t_train.append(transforms.RandomResizedCrop(224))
+    t_train.append(transforms.AugMix(alpha= 0.4))
+    #t_train.append(transforms.Lambda(lambda image: image.convert('RGB')))
+    t_train.append(transforms.RandomHorizontalFlip(p=0.4))
+    t_train.append(transforms.ToTensor())
+    t_train.append(transforms.Normalize(mean=[.5], std=[.5]))
+        
+
+    t_test = []
+    t_test.append(transforms.Resize((224, 224)))
+    #t_test.append(transforms.Lambda(lambda image: image.convert('RGB')))
+    t_test.append(transforms.ToTensor())
+    t_test.append(transforms.Normalize(mean=[.5], std=[.5]))
+    return transforms.Compose(t_train), transforms.Compose(t_test)
