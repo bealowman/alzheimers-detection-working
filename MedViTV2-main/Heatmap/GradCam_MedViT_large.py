@@ -95,7 +95,7 @@ if __name__ == '__main__':
 
     model =  MedViT_large(num_classes=nb_classes)
 
-    path = f'./MedViT_large_{args.dataset}.pth'
+    path = f'./MedViT_small_{args.dataset}.pth'
 
     checkpoint = torch.load(path)
     model.load_state_dict(checkpoint['model'])
