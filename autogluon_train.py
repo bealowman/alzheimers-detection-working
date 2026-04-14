@@ -121,7 +121,7 @@ def main(args):
     test_df  = build_dataframe(args.test_dir)
 
     # Combine train + val so AutoGluon can do its own internal tuning,
-    # or keep them separate — here we pass val as tuning data explicitly
+    # or keep them separate, pass val as tuning data explicitly
     print(f"\nTotal train: {len(train_df)}  val: {len(val_df)}  test: {len(test_df)}")
 
     if os.path.exists(model_path) and not args.retrain:
